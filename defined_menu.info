@@ -1,0 +1,4 @@
+name = Defined Menu
+description = Store menus as a YML file.
+package = Menus
+core = 7.x

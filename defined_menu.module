@@ -1,0 +1,89 @@
+<?php
+
+$defined_menu_weight = 0;
+
+function defined_menu_init(){
+  defined_menu_check_update();
+}
+
+function defined_menu_check_update(){
+  $time_to_define = microtime(true);
+  require_once("lib/spyc.php");
+  $yml_menu = DRUPAL_ROOT . "/" . conf_path() . "/defined_menu.yml";
+
+  // Do nothing if we have no yml file.
+  if(!file_exists($yml_menu)){
+    return false;
+  }
+
+  // Check the age of the yml file against what we've stored, but not if we're not caching.
+  if(variable_get('defined_menu_no_cache', 0) == 0){
+    if(filemtime($yml_menu) <=  variable_get('defined_menu_mtime', 0)){
+      return false;
+    }
+  }
+
+  $yml_menu_array = spyc_load_file($yml_menu);
+  foreach($yml_menu_array['menus'] as $menu_name => $children){
+    db_delete('menu_links')
+      ->condition('menu_name', $menu_name)
+      ->execute();
+    defined_menu_add_to_menu($menu_name, $children);
+  }
+
+  // Update file mtime
+  variable_set('defined_menu_mtime', filemtime($yml_menu));
+
+  // remove menu cache
+  if(db_table_exists('cache_menu')){
+    db_truncate('cache_menu')->execute();
+  }
+
+  $time_to_define = number_format(microtime(true) - $time_to_define,2);
+  drupal_set_message("Generated Menu from {$yml_menu} in {$time_to_define} seconds");
+}
+
+function defined_menu_clean(){
+  variable_del('defined_menu_mtime');
+}
+
+function defined_menu_add_to_menu($menu_name, $children, $depth = 1, $parent_id = 0){
+  global $defined_menu_weight;
+  foreach($children as $child){
+    $defined_menu_weight = $defined_menu_weight + 1;
+
+    if(!isset($child['url'])){
+      $child['url'] = '<front>';
+    }
+    if($child['url'] == '<front>'){
+      $child['external'] = 1;
+    }
+
+    $link_path = isset($child['url'])?$child['url']:'';
+    $router_path = _menu_find_router_path($link_path);
+
+    $insert_id = db_insert('menu_links')
+      ->fields(array(
+        'menu_name' => $menu_name,
+        'mlid' => null,
+        'plid' => $parent_id,
+        'link_path' => $link_path,
+        'router_path' => $router_path,
+        'link_title' => $child['label'],
+        'module' => 'defined_menu',
+        'hidden' => isset($child['hidden'])?$child['hidden']:0,
+        'external' => isset($child['external'])?$child['external']:0,
+        'has_children' => isset($child['children']) && count($child['children']) > 0 ? 1 : 0,
+        'expanded' => isset($child['expanded'])?$child['expanded']:0,
+        'depth' => $depth,
+        'weight' => $defined_menu_weight,
+      ))
+      ->execute();
+
+    // Then do its children
+    if(isset($child['children']) && count($child['children'])){
+      defined_menu_add_to_menu($menu_name, $child['children'], $depth+1, $insert_id);
+    }
+
+  }
+}
