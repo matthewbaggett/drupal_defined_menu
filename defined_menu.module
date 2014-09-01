@@ -87,3 +87,7 @@ function defined_menu_add_to_menu($menu_name, $children, $depth = 1, $parent_id 
 
   }
 }
+
+function defined_menu_flush_caches() {
+  variable_del('defined_menu_mtime');
+}
