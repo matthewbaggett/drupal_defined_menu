@@ -7,7 +7,6 @@ function defined_menu_init(){
 }
 
 function defined_menu_check_update(){
-  $time_to_define = microtime(true);
   require_once("lib/spyc.php");
   $yml_menu = DRUPAL_ROOT . "/" . conf_path() . "/defined_menu.yml";
 
@@ -23,23 +22,38 @@ function defined_menu_check_update(){
     }
   }
 
+  defined_menu_rebuild_menu();
+}
+
+function defined_menu_rebuild_menu(){
+  $yml_menu = DRUPAL_ROOT . "/" . conf_path() . "/defined_menu.yml";
+  $time_to_define = microtime(true);
+
   $yml_menu_array = spyc_load_file($yml_menu);
-  foreach($yml_menu_array['menus'] as $menu_name => $children){
-    db_delete('menu_links')
-      ->condition('menu_name', $menu_name)
-      ->execute();
-    defined_menu_add_to_menu($menu_name, $children);
+
+  // Attempt within a transaction
+  $transaction = db_transaction("Rebuild Menu");
+  try {
+    foreach ($yml_menu_array['menus'] as $menu_name => $children) {
+      db_delete('menu_links')
+        ->condition('menu_name', $menu_name)
+        ->execute();
+      defined_menu_add_to_menu($menu_name, $children);
+    }
+
+    // remove menu cache
+    if (db_table_exists('cache_menu')) {
+      db_truncate('cache_menu')->execute();
+    }
+
+    // Update file mtime
+    variable_set('defined_menu_mtime', filemtime($yml_menu));
+  }Catch(Exception $e){
+    $transaction->rollback();
+    watchdog_exception('defined_menu', $e);
   }
 
-  // Update file mtime
-  variable_set('defined_menu_mtime', filemtime($yml_menu));
-
-  // remove menu cache
-  if(db_table_exists('cache_menu')){
-    db_truncate('cache_menu')->execute();
-  }
-
-  $time_to_define = number_format(microtime(true) - $time_to_define,2);
+  $time_to_define = number_format(microtime(true) - $time_to_define, 2);
   drupal_set_message("Generated Menu from {$yml_menu} in {$time_to_define} seconds");
 }
 
