@@ -7,6 +7,7 @@ function defined_menu_init(){
 }
 
 function defined_menu_check_update(){
+  $lock_file = DRUPAL_ROOT . "/sites/default/files/defined_menu.lock";
   $time_to_define = microtime(true);
   require_once("lib/spyc.php");
   $yml_menu = DRUPAL_ROOT . "/" . conf_path() . "/defined_menu.yml";
@@ -23,6 +24,16 @@ function defined_menu_check_update(){
     }
   }
 
+  if(file_exists($lock_file)){
+    if(filemtime($lock_file) < strtotime('10 minutes ago')){
+      return false;
+    }else{
+      unlink($lock_file);
+    }
+  }
+
+  touch($lock_file);
+
   $yml_menu_array = spyc_load_file($yml_menu);
   foreach($yml_menu_array['menus'] as $menu_name => $children){
     db_delete('menu_links')
@@ -38,6 +49,8 @@ function defined_menu_check_update(){
   if(db_table_exists('cache_menu')){
     db_truncate('cache_menu')->execute();
   }
+
+  unlink($lock_file);
 
   $time_to_define = number_format(microtime(true) - $time_to_define,2);
   drupal_set_message("Generated Menu from {$yml_menu} in {$time_to_define} seconds");
