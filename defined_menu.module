@@ -68,7 +68,6 @@ function defined_menu_rebuild_menu(){
   $time_to_define = number_format(microtime(true) - $time_to_define, 2);
   unlink($lock_file);
 
-  $time_to_define = number_format(microtime(true) - $time_to_define,2);
   drupal_set_message("Generated Menu from {$yml_menu} in {$time_to_define} seconds");
 }
 
